@@ -913,15 +913,24 @@ class API(base.Base):
                             host=src_host, cast=False,
                             reservations=downsize_reservations)
 
-            is_up = False
+            is_up = True
             bdms = self.db.block_device_mapping_get_all_by_instance(
                 context, instance["uuid"])
-            #Note(jogo): db allows for multiple compute services per host
-            try:
-                services = self.db.service_get_all_compute_by_host(
-                        context.elevated(), instance['host'])
-            except exception.ComputeHostNotFound:
-                services = []
+            services = []
+            if (not FLAGS.enable_cells or
+                    (FLAGS.enable_cells and not instance['cell_name'])):
+                # If cells is disabled or we are actually in the cell that
+                # contains this instance. Otherwise, this will fail to find
+                # the compute host.
+                try:
+                    # Note(jogo): db allows for multiple compute services
+                    # per host
+                    services = self.db.service_get_all_compute_by_host(
+                            context.elevated(), instance['host'])
+                except exception.ComputeHostNotFound:
+                    services = []
+                is_up = False
+
             for service in services:
                 if utils.service_is_up(service):
                     is_up = True
@@ -1882,6 +1891,14 @@ class API(base.Base):
                 connect_info['port'], connect_info['internal_access_path'])
 
         return {'url': connect_info['access_url']}
+
+    def get_vnc_connect_info(self, context, instance, console_type):
+        """Used in a child cell to get console info."""
+        if not instance['host']:
+            raise exception.InstanceNotReady(instance=instance)
+        connect_info = self.compute_rpcapi.get_vnc_console(context,
+                instance=instance, console_type=console_type)
+        return connect_info
 
     @wrap_check_policy
     def get_console_output(self, context, instance, tail_length=None):
