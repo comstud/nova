@@ -816,6 +816,22 @@ class _BroadcastMessageMethods(_BaseMessageMethods):
         return self.db.task_log_get_all(ctxt, task_name, begin, end)
 
 
+    def list_compute_nodes(self, ctxt, hypervisor_match):
+        if hypervisor_match:
+            return self.db.compute_node_search_by_hypervisor(ctxt,
+                                                        hypervisor_match)
+        else:
+            return self.db.compute_node_get_all(ctxt)
+
+    def compute_node_get(self, ctxt, compute_id):
+        try:
+            return self.db.compute_node_get(ctxt, compute_id)
+        except exception.ComputeHostNotFound:
+            return None
+
+    def compute_node_stats(self, ctxt):
+        return self.db.compute_node_statistics(ctxt)
+
 _CELL_MESSAGE_TYPE_TO_MESSAGE_CLS = {'targetted': _TargettedMessage,
                                      'broadcast': _BroadcastMessage,
                                      'response': _ResponseMessage}

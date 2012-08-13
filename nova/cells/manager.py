@@ -284,3 +284,28 @@ class CellsManager(manager.Manager):
                 'down', run_locally=True, need_response=True)
         responses = message.process()
         return [(resp.cell_name, resp.response) for resp in responses]
+
+    def list_compute_nodes(self, ctxt, hypervisor_match):
+        """Return list of compute nodes in all cells."""
+        message = self.message_handler.create_broadcast_message(
+                ctxt, 'list_compute_nodes',
+                dict(hypervisor_match=hypervisor_match),
+                'down', run_locally=True, need_response=True)
+        responses = message.process()
+        return [(resp.cell_name, resp.response) for resp in responses]
+
+    def compute_node_get(self, ctxt, compute_id):
+        message = self.message_handler.create_broadcast_message(
+                ctxt, 'compute_node_get',
+                dict(compute_id=compute_id), 'down', run_locally=True,
+                need_response=True)
+        responses = message.process()
+        return [(resp.cell_name, resp.response) for resp in responses]
+
+    def compute_node_stats(self, ctxt):
+        """Return compute node stats from all cells."""
+        message = self.message_handler.create_broadcast_message(
+                ctxt, 'compute_node_stats', dict(), 'down', run_locally=True,
+                need_response=True)
+        responses = message.process()
+        return [(resp.cell_name, resp.response) for resp in responses]
