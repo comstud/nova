@@ -13,10 +13,13 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import copy
 from lxml import etree
 from webob import exc
 
 from nova.api.openstack.compute.contrib import hypervisors
+from nova.cells import rpcapi as cells_rpcapi
+from nova.cells import utils as cells_utils
 from nova import context
 from nova import db
 from nova import exception
@@ -330,6 +333,103 @@ class HypervisorsTest(test.TestCase):
                     current_workload=4,
                     running_vms=4,
                     disk_available_least=200)))
+
+
+class TestCellsHypervisorsController(test.TestCase):
+
+    def setUp(self):
+        """
+        Run before each test.
+        """
+        super(TestCellsHypervisorsController, self).setUp()
+        # Create controller to be used in each test
+        self.controller = hypervisors.CellsHypervisorsController()
+
+    def _mock_cells_rpcapi_method(self, method_name, ret_val, info=None):
+        def _fake_method(_self, *args, **kwargs):
+            if info is not None:
+                info['args'] = args
+                info['kwargs'] = kwargs
+            return ret_val
+
+        self.stubs.Set(cells_rpcapi.CellsAPI, method_name, _fake_method)
+
+    def test_empty_index(self):
+        """
+        Test showing empty index of hypervisors.
+        """
+        self._mock_cells_rpcapi_method('get_compute_nodes',
+                                       [("c0001", [])])
+        req = fakes.HTTPRequest.blank('/v2/fake/os-hypervisors')
+        response = self.controller.index(req)
+        self.assertEqual({"hypervisors": []}, response)
+
+    def test_index(self):
+        """
+        Test showing index of hypervisors.
+        """
+        ret_value = [("c0001", copy.deepcopy(TEST_HYPERS))]
+        self._mock_cells_rpcapi_method('get_compute_nodes', ret_value)
+        req = fakes.HTTPRequest.blank('/v2/fake/os-hypervisors')
+        response = self.controller.index(req)
+        hyp1_id = cells_utils.cell_with_item('c0001', '1')
+        hyp2_id = cells_utils.cell_with_item('c0001', '2')
+        self.assertEqual(
+                dict(hypervisors=[
+                    dict(id=hyp1_id, hypervisor_hostname="hyper1"),
+                    dict(id=hyp2_id, hypervisor_hostname="hyper2")]),
+                response)
+
+    def test_index_two_cells(self):
+        """
+        Test showing index of hypervisors.
+        """
+        ret_value = [("c0001", [copy.deepcopy(TEST_HYPERS[0])]),
+                     ("c0002", [copy.deepcopy(TEST_HYPERS[1])])]
+        self._mock_cells_rpcapi_method('get_compute_nodes', ret_value)
+        req = fakes.HTTPRequest.blank('/v2/fake/os-hypervisors')
+        response = self.controller.index(req)
+        hyp1_id = cells_utils.cell_with_item('c0001', '1')
+        hyp2_id = cells_utils.cell_with_item('c0002', '2')
+        self.assertEqual(
+                dict(hypervisors=[
+                    dict(id=hyp1_id, hypervisor_hostname="hyper1"),
+                    dict(id=hyp2_id, hypervisor_hostname="hyper2")]),
+                response)
+
+    def test_show(self):
+        self.maxDiff = None
+        info = {}
+        ret_value = copy.deepcopy(TEST_HYPERS[0])
+        self._mock_cells_rpcapi_method('get_compute_node_by_id',
+                                       ret_value, info)
+        req = fakes.HTTPRequest.blank(
+                '/v2/fake/os-hypervisors/api-cell!c0001!1')
+        node_id = cells_utils.cell_with_item('api-cell!c0001', '1')
+        response = self.controller.show(req, node_id)
+
+        self.assertEqual((req.environ['nova.context'], 'api-cell!c0001', '1'),
+                         info['args'])
+        self.assertEqual(
+                dict(hypervisor=dict(
+                    id=node_id,
+                    service=dict(id=node_id, host="compute1"),
+                    vcpus=4,
+                    memory_mb=10 * 1024,
+                    local_gb=250,
+                    vcpus_used=2,
+                    memory_mb_used=5 * 1024,
+                    local_gb_used=125,
+                    hypervisor_type="xen",
+                    hypervisor_version=3,
+                    hypervisor_hostname="hyper1",
+                    free_ram_mb=5 * 1024,
+                    free_disk_gb=125,
+                    current_workload=2,
+                    running_vms=2,
+                    cpu_info='cpu_info',
+                    disk_available_least=100)),
+                response)
 
 
 class HypervisorsSerializersTest(test.TestCase):

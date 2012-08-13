@@ -20,13 +20,19 @@ import webob.exc
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
 from nova.api.openstack import xmlutil
+from nova.cells import rpcapi as cells_rpcapi
+from nova.cells import utils as cells_utils
 from nova.compute import api as compute_api
 from nova import db
 from nova import exception
+from nova.openstack.common import cfg
 from nova.openstack.common import log as logging
 
 
+CONF = cfg.CONF
+CONF.import_opt('enable', 'nova.cells.opts', group='cells')
 LOG = logging.getLogger(__name__)
+
 authorize = extensions.extension_authorizer('compute', 'hypervisors')
 
 
@@ -240,6 +246,155 @@ class HypervisorsController(object):
         return dict(hypervisor_statistics=stats)
 
 
+class CellsHypervisorsController(object):
+    """The Hypervisors API controller for the OpenStack API for cells."""
+
+    def __init__(self):
+        self.api = compute_api.HostAPI()
+        self.cells_rpcapi = cells_rpcapi.CellsAPI()
+        super(CellsHypervisorsController, self).__init__()
+
+    def _view_hypervisor(self, hypervisor, detail, servers=None, **kwargs):
+        hyp_dict = {
+            'id': hypervisor['id'],
+            'hypervisor_hostname': hypervisor['hypervisor_hostname'],
+            }
+
+        if detail and not servers:
+            for field in ('vcpus', 'memory_mb', 'local_gb', 'vcpus_used',
+                          'memory_mb_used', 'local_gb_used',
+                          'hypervisor_type', 'hypervisor_version',
+                          'free_ram_mb', 'free_disk_gb', 'current_workload',
+                          'running_vms', 'cpu_info', 'disk_available_least'):
+                hyp_dict[field] = hypervisor[field]
+
+            hyp_dict['service'] = {
+                'id': hypervisor['service_id'],
+                'host': hypervisor['service']['host'],
+                }
+
+        if servers is not None:
+            hyp_dict['servers'] = [dict(name=serv['name'], uuid=serv['uuid'])
+                                   for serv in servers or []]
+
+        # Add any additional info
+        if kwargs:
+            hyp_dict.update(kwargs)
+
+        return hyp_dict
+
+    def _get_hypervisor(self, context, compute_id):
+        """Get hypervisor locally, or from child cell."""
+        try:
+            cell_name, compute_id = cells_utils.split_cell_and_item(
+                    compute_id)
+        except (ValueError, AttributeError):
+            raise webob.exc.HTTPNotFound()
+        hyp = self.cells_rpcapi.get_compute_node_by_id(context,
+                cell_name, compute_id)
+        hyp["id"] = cells_utils.cell_with_item(cell_name,
+                                               hyp['id'])
+        hyp["service_id"] = cells_utils.cell_with_item(cell_name,
+                                                       hyp['service_id'])
+        return hyp
+
+    def _get_all_hypervisors(self, context, match=None, **kwargs):
+        responses = self.cells_rpcapi.get_compute_nodes(context)
+        for (cell_name, response) in responses:
+            for item in response:
+                item["id"] = cells_utils.cell_with_item(cell_name,
+                                                        item['id'])
+                if 'service_id' in item:
+                    item["service_id"] = cells_utils.cell_with_item(
+                            cell_name, item["service_id"])
+                if match:
+                    if match in item["id"]:
+                        yield item
+                else:
+                    yield item
+
+    @wsgi.serializers(xml=HypervisorIndexTemplate)
+    def index(self, req):
+        context = req.environ['nova.context']
+        authorize(context)
+        hypervisors = self._get_all_hypervisors(context)
+        hypervisors = [self._view_hypervisor(hyp, False)
+                                 for hyp in hypervisors]
+        return dict(hypervisors=hypervisors)
+
+    @wsgi.serializers(xml=HypervisorDetailTemplate)
+    def detail(self, req):
+        context = req.environ['nova.context']
+        authorize(context)
+        hypervisors = self._get_all_hypervisors(context)
+        hypervisors = [self._view_hypervisor(hyp, True)
+                                 for hyp in hypervisors]
+        return dict(hypervisors=hypervisors)
+
+    @wsgi.serializers(xml=HypervisorTemplate)
+    def show(self, req, id):
+        context = req.environ['nova.context']
+        authorize(context)
+        try:
+            hyp = self._get_hypervisor(context, id)
+        except webob.exc.HTTPNotFound:
+            msg = _("Hypervisor with ID '%s' could not be found.") % id
+            raise webob.exc.HTTPNotFound(explanation=msg)
+        return dict(hypervisor=self._view_hypervisor(hyp, True))
+
+    @wsgi.serializers(xml=HypervisorUptimeTemplate)
+    def uptime(self, req, id):
+        raise webob.exc.HTTPNotImplemented()
+
+    @wsgi.serializers(xml=HypervisorIndexTemplate)
+    def search(self, req, id):
+        context = req.environ['nova.context']
+        authorize(context)
+        hypervisors = self._get_all_hypervisors(context, match=id)
+        if hypervisors:
+            return dict(hypervisors=[self._view_hypervisor(hyp, False)
+                                     for hyp in hypervisors])
+        else:
+            msg = _("No hypervisor matching '%s' could be found.") % id
+            raise webob.exc.HTTPNotFound(explanation=msg)
+
+    @wsgi.serializers(xml=HypervisorServersTemplate)
+    def servers(self, req, id):
+        context = req.environ['nova.context']
+        authorize(context)
+        hypervisors = list(self._get_all_hypervisors(context, match=id))
+        if hypervisors:
+            return dict(hypervisors=[self._view_hypervisor(hyp, False,
+                                     db.instance_get_all_by_host(context,
+                                                       hyp['service']['host']))
+                                     for hyp in hypervisors])
+        else:
+            msg = _("No hypervisor matching '%s' could be found.") % id
+            raise webob.exc.HTTPNotFound(explanation=msg)
+
+    @wsgi.serializers(xml=HypervisorStatisticsTemplate)
+    def statistics(self, req):
+        context = req.environ['nova.context']
+        authorize(context)
+        responses = self.cells_rpcapi.get_compute_node_stats(context)
+        stats = {}
+        for (_cell, response) in responses:
+            for compute_node in response:
+                for k, v in compute_node.items():
+                    if k in stats:
+                        stats[k] = stats[k] + v
+                    else:
+                        stats[k] = v
+
+        return dict(hypervisor_statistics=stats)
+
+
+if CONF.cells.enable:
+    controller = CellsHypervisorsController()
+else:
+    controller = HypervisorsController()
+
+
 class Hypervisors(extensions.ExtensionDescriptor):
     """Admin-only hypervisor administration."""
 
@@ -250,7 +405,7 @@ class Hypervisors(extensions.ExtensionDescriptor):
 
     def get_resources(self):
         resources = [extensions.ResourceExtension('os-hypervisors',
-                HypervisorsController(),
+                controller,
                 collection_actions={'detail': 'GET',
                                     'statistics': 'GET'},
                 member_actions={'uptime': 'GET',

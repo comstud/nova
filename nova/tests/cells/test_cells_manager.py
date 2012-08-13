@@ -300,3 +300,36 @@ class CellsManagerClassTestCase(test.TestCase):
                                                     begin='fake-begin',
                                                     end='fake-end')
         self.assertEqual(expected_response, response)
+
+    def test_get_compute_nodes(self):
+        expected_response, raw_responses = self._get_fake_responses()
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'get_compute_nodes')
+        self.msg_runner.get_compute_nodes(self.ctxt,
+                'fake-match').AndReturn(raw_responses)
+        self.mox.ReplayAll()
+        response = self.cells_manager.get_compute_nodes(self.ctxt,
+                hypervisor_match='fake-match')
+        self.assertEqual(expected_response, response)
+
+    def test_get_compute_node_stats(self):
+        expected_response, raw_responses = self._get_fake_responses()
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'get_compute_node_stats')
+        self.msg_runner.get_compute_node_stats(self.ctxt).AndReturn(
+                raw_responses)
+        self.mox.ReplayAll()
+        response = self.cells_manager.get_compute_node_stats(self.ctxt)
+        self.assertEqual(expected_response, response)
+
+    def test_get_compute_node_by_id(self):
+        expected_response, raw_responses = self._get_fake_responses()
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'get_compute_node_by_id')
+        self.msg_runner.get_compute_node_by_id(self.ctxt,
+                'fake-cell', 'fake-id').AndReturn(raw_responses[0])
+        self.mox.ReplayAll()
+        response = self.cells_manager.get_compute_node_by_id(self.ctxt,
+                cell_name='fake-cell', compute_id='fake-id')
+        # only 1 response
+        self.assertEqual(1, response)

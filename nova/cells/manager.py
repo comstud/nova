@@ -65,7 +65,7 @@ class CellsManager(manager.Manager):
 
     Scheduling requests get passed to the scheduler class.
     """
-    RPC_API_VERSION = '1.3'
+    RPC_API_VERSION = '1.4'
 
     def __init__(self, *args, **kwargs):
         # Mostly for tests.
@@ -268,3 +268,21 @@ class CellsManager(manager.Manager):
         responses = self.msg_runner.get_task_logs(ctxt, task_name,
                                                   begin, end)
         return self._get_multiple_responses(responses)
+
+    def get_compute_nodes(self, ctxt, hypervisor_match):
+        """Return list of compute nodes in all cells."""
+        responses = self.msg_runner.get_compute_nodes(ctxt,
+                hypervisor_match)
+        return self._get_multiple_responses(responses)
+
+    def get_compute_node_stats(self, ctxt):
+        """Return compute node stats from all cells."""
+        responses = self.msg_runner.get_compute_node_stats(ctxt)
+        return self._get_multiple_responses(responses)
+
+    def get_compute_node_by_id(self, ctxt, cell_name, compute_id):
+        """Get a compute node by ID in a specific cell."""
+        response = self.msg_runner.get_compute_node_by_id(ctxt,
+                                                          cell_name,
+                                                          compute_id)
+        return response.value_or_raise()
