@@ -151,3 +151,17 @@ class CellsAPI(rpc_proxy.RpcProxy):
                                              project_id=project_id,
                                              updated_since=updated_since,
                                              deleted=deleted))
+
+    def list_services(self, ctxt, include_disabled=True):
+        if not CONF.cells.enable:
+            return []
+        return self.call(ctxt, self.make_msg('list_services',
+                include_disabled=include_disabled))
+
+    def get_task_logs(self, ctxt, task_name, begin, end):
+        if not CONF.cells.enable:
+            return []
+        return self.call(ctxt, self.make_msg('get_task_logs',
+                                             task_name=task_name,
+                                             begin=begin,
+                                             end=end))

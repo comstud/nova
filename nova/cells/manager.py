@@ -266,3 +266,21 @@ class CellsManager(manager.Manager):
                      updated_since=updated_since,
                      deleted=deleted), 'down', run_locally=True)
         message.process()
+
+    def list_services(self, ctxt, include_disabled):
+        """Return services in all child cells."""
+        message = self.message_handler.create_broadcast_message(
+                ctxt, 'list_services',
+                dict(include_disabled=include_disabled),
+                'down', run_locally=True, need_response=True)
+        responses = message.process()
+        return [(resp.cell_name, resp.response) for resp in responses]
+
+    def task_logs(self, ctxt, task_name, begin, end):
+        """Return task logs in all child cells."""
+        message = self.message_handler.create_broadcast_message(
+                ctxt, 'get_task_logs',
+                dict(task_name=task_name, begin=begin, end=end),
+                'down', run_locally=True, need_response=True)
+        responses = message.process()
+        return [(resp.cell_name, resp.response) for resp in responses]

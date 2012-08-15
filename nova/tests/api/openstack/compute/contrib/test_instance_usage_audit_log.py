@@ -16,6 +16,7 @@
 import datetime
 
 from nova.api.openstack.compute.contrib import instance_usage_audit_log as ial
+from nova.cells import rpcapi as cells_rpcapi
 from nova import context
 from nova import db
 from nova.openstack.common import timeutils
@@ -80,6 +81,10 @@ TEST_LOGS3 = [
     ]
 
 
+def dont_call_me(*args, **kw):
+    raise AssertionError("Called a method that should not be called")
+
+
 def fake_service_get_all(context):
     return TEST_COMPUTE_SERVICES
 
@@ -106,6 +111,20 @@ def fake_last_completed_audit_period(unit=None, before=None):
                 return begin, end
         raise AssertionError("Invalid before date %s" % (before))
     return begin1, end1
+
+
+def fake_list_services(self, context, include_disabled=True):
+    svcs = fake_service_get_all(context)
+    return [('toobee', [s for s in svcs if s['host'].startswith('b')]),
+            ('nottoobee',
+                    [s for s in svcs if not s['host'].startswith('b')])]
+
+
+def fake_get_task_logs(self, context, task_name, begin, end):
+        tlogs = fake_task_log_get_all(context, task_name, begin, end)
+        return [('toobee', [l for l in tlogs if l['host'].startswith('b')]),
+                ('nottoobee',
+                        [l for l in tlogs if not l['host'].startswith('b')])]
 
 
 class InstanceUsageAuditLogTest(test.TestCase):
@@ -186,3 +205,18 @@ class InstanceUsageAuditLogTest(test.TestCase):
         self.assertEquals(0, logs['num_hosts_not_run'])
         self.assertEquals("ALL hosts done. 3 errors.",
                           logs['overall_status'])
+
+
+class CellsInstanceUsageAuditLogTest(InstanceUsageAuditLogTest):
+
+    def setUp(self):
+        super(CellsInstanceUsageAuditLogTest, self).setUp()
+        self.controller = ial.CellsInstanceUsageAuditLogController()
+        self.stubs.Set(cells_rpcapi.CellsAPI, 'list_services',
+                fake_list_services)
+        self.stubs.Set(cells_rpcapi.CellsAPI, 'get_task_logs',
+                fake_get_task_logs)
+        self.stubs.Set(db, 'service_get_all',
+                            dont_call_me)
+        self.stubs.Set(db, 'task_log_get_all',
+                            dont_call_me)

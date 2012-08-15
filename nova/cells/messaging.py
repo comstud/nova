@@ -804,6 +804,17 @@ class _BroadcastMessageMethods(_BaseMessageMethods):
         for instance in instances:
             self._sync_instance(ctxt, instance)
 
+    def list_services(self, ctxt, include_disabled):
+        """Return all services in this cell."""
+        if include_disabled:
+            return self.db.service_get_all(ctxt)
+        else:
+            return self.db.service_get_all(ctxt, disabled=False)
+
+    def get_task_logs(self, ctxt, message, task_name, begin, end):
+        """Return all task logs in this cell."""
+        return self.db.task_log_get_all(ctxt, task_name, begin, end)
+
 
 _CELL_MESSAGE_TYPE_TO_MESSAGE_CLS = {'targetted': _TargettedMessage,
                                      'broadcast': _BroadcastMessage,

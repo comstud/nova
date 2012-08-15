@@ -222,3 +222,23 @@ class CellsAPITestCase(test.TestCase):
                          'updated_since': 'fake_time',
                          'deleted': True}
         self._check_result(call_info, 'sync_instances', expected_args)
+
+    def test_list_services(self):
+        call_info = self._stub_rpc_method('call', 'fake_response')
+        result = self.cells_rpcapi.list_services(self.fake_context,
+                include_disabled=False)
+
+        expected_args = {'include_disabled': False}
+        self._check_result(call_info, 'list_services', expected_args)
+        self.assertEqual(result, 'fake_response')
+
+    def test_get_task_logs(self):
+        call_info = self._stub_rpc_method('call', 'fake_response')
+        result = self.cells_rpcapi.get_task_logs(self.fake_context,
+                task_name='fake_name', begin='fake_begin', end='fake_end')
+
+        expected_args = {'task_name': 'fake_name',
+                         'begin': 'fake_begin',
+                         'end': 'fake_end'}
+        self._check_result(call_info, 'get_task_logs', expected_args)
+        self.assertEqual(result, 'fake_response')
