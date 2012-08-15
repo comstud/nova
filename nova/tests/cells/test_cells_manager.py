@@ -287,3 +287,16 @@ class CellsManagerClassTestCase(test.TestCase):
                 topic=topic, rpc_message='fake-rpc-msg', call=True,
                 timeout=-1)
         self.assertEqual('fake-response', response)
+
+    def test_get_task_logs(self):
+        expected_response, raw_responses = self._get_fake_responses()
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'get_task_logs')
+        self.msg_runner.get_task_logs(self.ctxt, 'fake-name', 'fake-begin',
+                                      'fake-end').AndReturn(raw_responses)
+        self.mox.ReplayAll()
+        response = self.cells_manager.get_task_logs(self.ctxt,
+                                                    task_name='fake-name',
+                                                    begin='fake-begin',
+                                                    end='fake-end')
+        self.assertEqual(expected_response, response)

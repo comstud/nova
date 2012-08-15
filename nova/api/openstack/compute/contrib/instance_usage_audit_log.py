@@ -21,12 +21,14 @@ import datetime
 import webob.exc
 
 from nova.api.openstack import extensions
+from nova.cells import rpcapi as cells_rpcapi
 from nova import db
 from nova.openstack.common import cfg
 from nova import utils
 
 CONF = cfg.CONF
 CONF.import_opt('compute_topic', 'nova.compute.rpcapi')
+CONF.import_opt('enable', 'nova.cells.opts', group='cells')
 
 
 authorize = extensions.extension_authorizer('compute',
@@ -58,6 +60,17 @@ class InstanceUsageAuditLogController(object):
                                                      before=before_date)
         return {'instance_usage_audit_log': task_log}
 
+    def _get_task_logs(self, context, begin, end):
+        return db.task_log_get_all(context, "instance_usage_audit",
+                                        begin, end)
+
+    def _get_hosts(self, context):
+        # We do this this way to include disabled compute services,
+        # which can have instances on them. (mdragon)
+        services = [svc for svc in db.service_get_all(context)
+                    if svc['topic'] == CONF.compute_topic]
+        return set(serv['host'] for serv in services)
+
     def _get_audit_task_logs(self, context, begin=None, end=None,
                              before=None):
         """Returns a full log for all instance usage audit tasks on all
@@ -78,13 +91,8 @@ class InstanceUsageAuditLogController(object):
             begin = defbegin
         if end is None:
             end = defend
-        task_logs = db.task_log_get_all(context, "instance_usage_audit",
-                                        begin, end)
-        # We do this this way to include disabled compute services,
-        # which can have instances on them. (mdragon)
-        services = [svc for svc in db.service_get_all(context)
-                    if svc['topic'] == CONF.compute_topic]
-        hosts = set(serv['host'] for serv in services)
+        task_logs = self._get_task_logs(context, begin, end)
+        hosts = self._get_hosts(context)
         seen_hosts = set()
         done_hosts = set()
         running_hosts = set()
@@ -121,6 +129,35 @@ class InstanceUsageAuditLogController(object):
                     log=log)
 
 
+class CellsInstanceUsageAuditLogController(InstanceUsageAuditLogController):
+
+    def __init__(self):
+        super(CellsInstanceUsageAuditLogController, self).__init__()
+        self.cells_rpcapi = cells_rpcapi.CellsAPI()
+
+    def _get_hosts(self, context):
+        hosts = set()
+        responses = self.cells_rpcapi.service_get_all(context)
+        for (cell_name, response) in responses:
+            for service in response:
+                # We do this this way to include disabled compute services,
+                # which can have instances on them. (mdragon)
+                if service['topic'] == CONF.compute_topic:
+                    #host.add("%s %s" % (cell_name, service['host']))
+                    hosts.add(service['host'])
+        return hosts
+
+    def _get_task_logs(self, context, begin, end):
+        logs = []
+        responses = self.cells_rpcapi.get_task_logs(context,
+                task_name='instance_usage_audit', begin=begin, end=end)
+        for (cell_name, response) in responses:
+            for tlog in response:
+                #tlog['host'] = "%s %s" % (cell_name, tlog['host'])
+                logs.append(tlog)
+        return logs
+
+
 class Instance_usage_audit_log(extensions.ExtensionDescriptor):
     """Admin-only Task Log Monitoring."""
     name = "OSInstanceUsageAuditLog"
@@ -129,6 +166,11 @@ class Instance_usage_audit_log(extensions.ExtensionDescriptor):
     updated = "2012-07-06T01:00:00+00:00"
 
     def get_resources(self):
+        if CONF.cells.enable:
+            controller = CellsInstanceUsageAuditLogController()
+        else:
+            controller = InstanceUsageAuditLogController()
+
         ext = extensions.ResourceExtension('os-instance_usage_audit_log',
-                                           InstanceUsageAuditLogController())
+                                           controller)
         return [ext]

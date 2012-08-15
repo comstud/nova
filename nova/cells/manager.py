@@ -65,7 +65,7 @@ class CellsManager(manager.Manager):
 
     Scheduling requests get passed to the scheduler class.
     """
-    RPC_API_VERSION = '1.2'
+    RPC_API_VERSION = '1.3'
 
     def __init__(self, *args, **kwargs):
         # Mostly for tests.
@@ -262,3 +262,9 @@ class CellsManager(manager.Manager):
         response = self.msg_runner.proxy_rpc_to_manager(ctxt, cell_name,
                 host_name, topic, rpc_message, call, timeout)
         return response.value_or_raise()
+
+    def get_task_logs(self, ctxt, task_name, begin, end):
+        """Return task logs in this cell and in all child cells."""
+        responses = self.msg_runner.get_task_logs(ctxt, task_name,
+                                                  begin, end)
+        return self._get_multiple_responses(responses)

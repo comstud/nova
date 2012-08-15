@@ -260,3 +260,15 @@ class CellsAPITestCase(test.TestCase):
                            expected_args,
                            version='1.2')
         self.assertEqual(result, 'fake_response')
+
+    def test_get_task_logs(self):
+        call_info = self._stub_rpc_method('call', 'fake_response')
+        result = self.cells_rpcapi.get_task_logs(self.fake_context,
+                task_name='fake_name', begin='fake_begin', end='fake_end')
+
+        expected_args = {'task_name': 'fake_name',
+                         'begin': 'fake_begin',
+                         'end': 'fake_end'}
+        self._check_result(call_info, 'get_task_logs', expected_args,
+                           version='1.3')
+        self.assertEqual(result, 'fake_response')

@@ -839,6 +839,10 @@ class _BroadcastMessageMethods(_BaseMessageMethods):
                 ret_services.append(service)
         return ret_services
 
+    def get_task_logs(self, message, task_name, begin, end):
+        """Return all task logs in this cell."""
+        return self.db.task_log_get_all(message.ctxt, task_name, begin,
+                                        end)
 
 _CELL_MESSAGE_TYPE_TO_MESSAGE_CLS = {'targeted': _TargetedMessage,
                                      'broadcast': _BroadcastMessage,
@@ -1104,6 +1108,17 @@ class MessageRunner(object):
                                    method_kwargs, 'down', cell_name,
                                    need_response=call)
         return message.process()
+
+    def get_task_logs(self, ctxt, task_name, begin, end):
+        """Get task logs in this cell and child cells."""
+        method_kwargs = dict(task_name=task_name,
+                             begin=begin,
+                             end=end)
+        message = _BroadcastMessage(self, ctxt, 'get_task_logs',
+                                    method_kwargs, 'down',
+                                    run_locally=True, need_response=True)
+        return message.process()
+
 
     @staticmethod
     def get_message_types():

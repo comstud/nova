@@ -1118,3 +1118,34 @@ class CellsBroadcastMethodsTestCase(test.TestCase):
                                  'api-cell!child-cell2',
                                  'api-cell']]
         self.assertEqual(expected, response_values)
+
+    def test_get_task_logs(self):
+        # Reset this, as this is a broadcast down.
+        self._setup_attrs(up=False)
+        task_name = 'fake_task_name'
+        begin = 'fake_begin'
+        end = 'fake_end'
+
+        ctxt = self.ctxt.elevated()
+
+        self.mox.StubOutWithMock(self.src_db_inst, 'task_log_get_all')
+        self.mox.StubOutWithMock(self.mid_db_inst, 'task_log_get_all')
+        self.mox.StubOutWithMock(self.tgt_db_inst, 'task_log_get_all')
+
+        self.src_db_inst.task_log_get_all(ctxt, task_name,
+                                          begin, end).AndReturn([1, 2])
+        self.mid_db_inst.task_log_get_all(ctxt, task_name,
+                                          begin, end).AndReturn([3])
+        self.tgt_db_inst.task_log_get_all(ctxt, task_name,
+                                          begin, end).AndReturn([4, 5])
+
+        self.mox.ReplayAll()
+
+        responses = self.src_msg_runner.get_task_logs(ctxt, task_name,
+                                                      begin, end)
+        response_values = [(resp.cell_name, resp.value_or_raise())
+                           for resp in responses]
+        expected = [('api-cell!child-cell2!grandchild-cell1', [4, 5]),
+                    ('api-cell!child-cell2', [3]),
+                    ('api-cell', [1, 2])]
+        self.assertEqual(expected, response_values)
