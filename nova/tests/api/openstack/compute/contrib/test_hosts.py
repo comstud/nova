@@ -17,20 +17,21 @@ from lxml import etree
 import webob.exc
 
 from nova.api.openstack.compute.contrib import hosts as os_hosts
+from nova.cells import rpcapi as cells_rpcapi
 from nova.compute import power_state
 from nova.compute import vm_states
 from nova import context
 from nova import db
 from nova.openstack.common import log as logging
 from nova import test
+from nova.tests import matchers
 
 LOG = logging.getLogger(__name__)
 HOST_LIST = {"hosts": [
         {"host_name": "host_c1", "service": "compute", "zone": "nova"},
         {"host_name": "host_c2", "service": "compute", "zone": "nonova"},
         {"host_name": "host_v1", "service": "volume", "zone": "nova"},
-        {"host_name": "host_v2", "service": "volume", "zone": "nonova"}]
-        }
+        {"host_name": "host_v2", "service": "volume", "zone": "nonova"}]}
 HOST_LIST_NOVA_ZONE = [
         {"host_name": "host_c1", "service": "compute", "zone": "nova"},
         {"host_name": "host_v1", "service": "volume", "zone": "nova"}]
@@ -376,3 +377,124 @@ class HostSerializerTest(test.TestCase):
         result = self.deserializer.deserialize(intext)
 
         self.assertEqual(dict(body=exemplar), result)
+
+
+class HostTestCaseCells(test.TestCase):
+    """
+    Tests that _list_hosts calls the child cells when CONF.cells.enable is on
+    """
+
+    fakeHosts = [
+        {'host': 'cells1.host.com',
+         'topic': 'cells'},
+        {'host': 'cells2.host.com',
+         'topic': 'cells'},
+        {'host': 'cells3.host.com',
+         'topic': 'cells'},
+        {'host': 'compute.host.com',
+         'topic': 'compute'},
+        {'host': 'console.host.com',
+         'topic': 'consoleauth'},
+        {'host': 'network1.host.com',
+         'topic': 'network'},
+        {'host': 'network1.host.com',
+         'topic': 'network'},
+        {'host': 'network1.host.com',
+         'topic': 'network'},
+        {'host': 'scheduler1.host.com',
+         'topic': 'scheduler'},
+        {'host': 'scheduler2.host.com',
+         'topic': 'scheduler'},
+        {'host': 'scheduler3.host.com',
+         'topic': 'volume'},
+        {'host': 'compute1.host.com',
+         'topic': 'compute'},
+        {'host': 'compute2.host.com',
+         'topic': 'compute'},
+        {'host': 'compute3.host.com',
+         'topic': 'compute'},
+    ]
+
+    def setUp(self):
+        super(HostTestCaseCells, self).setUp()
+        self.flags(enable=True, group='cells')
+        self.fake_req = FakeRequest()
+        self.controller = os_hosts.HostController()
+
+    def _mock_broadcast_call(self, ret_val, info=None):
+        def _fake_cell_broadcast_call(_self, *args, **kwargs):
+            if info is not None:
+                info['args'] = args
+                info['kwargs'] = kwargs
+            return ret_val
+
+        self.stubs.Set(cells_rpcapi.CellsAPI, 'cell_broadcast_call',
+                _fake_cell_broadcast_call)
+
+    def test_empty_list(self):
+        self._mock_broadcast_call([([], "c0001")])
+        response = self.controller.index(self.fake_req)
+        self.assertEqual({"hosts": []}, response)
+
+    def test_empty_list_from_two_cells(self):
+        self._mock_broadcast_call([([], "c0001"), ([], "c0002")])
+        response = self.controller.index(self.fake_req)
+        self.assertEqual({"hosts": []}, response)
+
+    def test_cell_name_prepending(self):
+        self._mock_broadcast_call([(self.fakeHosts, "c0001")])
+        response = self.controller.index(self.fake_req)
+        responseHosts = response.get('hosts', [])
+        for responseHost, fakeHost in zip(responseHosts, self.fakeHosts):
+            self.assertEqual(responseHost['host_name'],
+                             'c0001-%s' % fakeHost['host'])
+            self.assertEqual(responseHost['service'], fakeHost['topic'])
+
+    def test_cell_name_prepending_with_two_cells(self):
+        self._mock_broadcast_call([(self.fakeHosts, "c0001"),
+                                   (self.fakeHosts, "c0002")])
+        response = self.controller.index(self.fake_req)
+        responseHosts = response.get('hosts', [])
+        ln = len(self.fakeHosts)
+        self.assertEqual(len(responseHosts), ln * 2)
+        for responseHost, fakeHost in zip(responseHosts, self.fakeHosts):
+            self.assertEqual(responseHost['host_name'],
+                             'c0001-%s' % fakeHost['host'])
+            self.assertEqual(responseHost['service'], fakeHost['topic'])
+        for responseHost, fakeHost in zip(responseHosts[ln:], self.fakeHosts):
+            self.assertEqual(responseHost['host_name'],
+                             'c0002-%s' % fakeHost['host'])
+            self.assertEqual(responseHost['service'], fakeHost['topic'])
+
+    def test_param_names_passed_correctly(self):
+        """Test correct args passed to cell_broadcast_call."""
+        info = {}
+        self._mock_broadcast_call([], info=info)
+        os_hosts._cells_list_hosts(self.fake_req, 'compute')
+
+        fake_context = self.fake_req.environ['nova.context']
+        expected = {'args': (fake_context, 'down', 'list_services'),
+                    'kwargs': {'include_disabled': False}}
+        self.assertThat(info, matchers.DictMatches(expected))
+
+    def test_ignoring_non_compute_ervices(self):
+        half = len(self.fakeHosts)
+        half1 = self.fakeHosts[:half]
+        half2 = self.fakeHosts[half + 1:]
+        half1Filtered = [
+            host for host in half1 if host['topic'] == 'compute']
+        half2Filtered = [
+            host for host in half2 if host['topic'] == 'compute']
+        self._mock_broadcast_call([(half1, "c0001"),
+                                   (half2, "c0002")])
+        output = os_hosts._cells_list_hosts(self.fake_req, 'compute')
+        self.assertEqual(len(half1Filtered) + len(half2Filtered), len(output))
+        for in_row, out_row in zip(half1Filtered, output):
+            self.assertEqual(out_row['host_name'],
+                             'c0001-%s' % in_row['host'])
+            self.assertEqual(in_row['topic'], out_row['service'])
+
+        for in_row, out_row in zip(half2Filtered, output[len(half1) + 1:]):
+            self.assertEqual(out_row['host_name'],
+                             'c0002-%s' % in_row['host'])
+            self.assertEqual(in_row['topic'], out_row['service'])

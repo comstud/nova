@@ -22,12 +22,16 @@ from xml.parsers import expat
 from nova.api.openstack import extensions
 from nova.api.openstack import wsgi
 from nova.api.openstack import xmlutil
+from nova.cells import rpcapi as cells_rpcapi
 from nova.compute import api as compute_api
 from nova import db
 from nova import exception
+from nova.openstack.common import cfg
 from nova.openstack.common import log as logging
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
+CONF.import_opt('enable', 'nova.cells.opts', group='cells')
 authorize = extensions.extension_authorizer('compute', 'hosts')
 
 
@@ -94,8 +98,18 @@ class HostUpdateDeserializer(wsgi.XMLDeserializer):
 
 
 def _list_hosts(req):
-    """Returns a summary list of hosts, optionally filtering
+    """Returns a summary list of enabled hosts."""
+    if CONF.cells.enable:
+        return _cells_list_hosts(req)
+    else:
+        return _no_cells_list_hosts(req)
+
+
+def _no_cells_list_hosts(req):
+    """Returns a summary list of enabled hosts, optionally filtering
     by service type.
+
+    This is the 'no-cells' version, that just directly queries the DB
     """
     context = req.environ['nova.context']
     services = db.service_get_all(context, False)
@@ -109,6 +123,38 @@ def _list_hosts(req):
         hosts.append({"host_name": host['host'], 'service': host['topic'],
                       'zone': host['availability_zone']})
     return hosts
+
+
+def _cells_list_hosts(req):
+    """Returns a summary list of enabled hosts, optionally filtering
+    by service type.
+
+    This is the 'cells' version, that just drills down to
+    the child cells to get all the results
+
+    :returns: A list of the format:
+        [{'host_name': 'some.host.name', 'service': 'cells'},
+         {'host_name': 'console1.host.com', 'service': 'consoleauth'},
+         {'host_name': 'network1.host.com', 'service': 'network'},
+         {'host_name': 'sched2.host.com', 'service': 'scheduler'},
+         ...
+        ]
+    """
+    context = req.environ['nova.context']
+    rpcapi = cells_rpcapi.CellsAPI()
+    responses = rpcapi.cell_broadcast_call(context,
+                                           "down",
+                                           "list_services",
+                                           include_disabled=False)
+    result = []
+    for (cell_name, hosts) in responses:
+        result.extend([
+            {'host_name': '%s-%s' % (cell_name, host['host']),
+             'service': host['topic']}
+            for host in hosts
+        ])
+
+    return result
 
 
 def check_host(fn):
@@ -132,6 +178,28 @@ class HostController(object):
 
     @wsgi.serializers(xml=HostIndexTemplate)
     def index(self, req):
+        """
+        :returns: A dict in the format:
+
+            {'hosts': [{'host_name': 'some.host.name',
+               'service': 'cells'},
+              {'host_name': 'some.other.host.name',
+               'service': 'cells'},
+              {'host_name': 'some.celly.host.name',
+               'service': 'cells'},
+              {'host_name': 'console1.host.com',
+               'service': 'consoleauth'},
+              {'host_name': 'network1.host.com',
+               'service': 'network'},
+              {'host_name': 'netwwork2.host.com',
+               'service': 'network'},
+              {'host_name': 'sched1.host.com',
+               'service': 'scheduler'},
+              {'host_name': 'sched2.host.com',
+               'service': 'scheduler'},
+              {'host_name': 'vol1.host.com',
+               'service': 'volume'}]}
+        """
         authorize(req.environ['nova.context'])
         return {'hosts': _list_hosts(req)}
 
