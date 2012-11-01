@@ -21,9 +21,14 @@
             "zone": "nova"
         },
         {
-	    "host_name": "%(host_name)s",
-	    "service": "conductor",
-	    "zone": "nova"
+            "host_name": "%(host_name)s",
+            "service": "conductor",
+            "zone": "nova"
+        },
+        {
+            "host_name": "%(host_name)s",
+            "service": "cells",
+            "zone": "nova"
         }
     ]
 }

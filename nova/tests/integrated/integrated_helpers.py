@@ -24,15 +24,18 @@ import string
 import uuid
 
 import nova.image.glance
+from nova.openstack.common import cfg
 from nova.openstack.common.log import logging
 from nova import service
-from nova import test  # For the flags
+from nova import test
 from nova.tests import fake_crypto
 import nova.tests.image.fake
 from nova.tests.integrated.api import client
 
 
 LOG = logging.getLogger(__name__)
+CONF = cfg.CONF
+CONF.import_opt('manager', 'nova.cells.opts', group='cells')
 
 
 def generate_random_alphanumeric(length):
@@ -79,6 +82,7 @@ class _IntegratedTestBase(test.TestCase):
         self.scheduler = self.start_service('scheduler')
         self.conductor = self.start_service(
             'conductor', manager='nova.conductor.manager.ConductorManager')
+        self.cells = self.start_service('cells', manager=CONF.cells.manager)
 
         self._start_api_service()
 
