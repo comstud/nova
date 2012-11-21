@@ -279,6 +279,43 @@ class CellsTest(test.TestCase):
         self.assertEqual(cell_caps['cap1'], 'a;b')
         self.assertEqual(cell_caps['cap2'], 'c;d')
 
+    def test_sync_instances(self):
+        call_info = {}
+
+        def sync_instances(self, context, **kwargs):
+            call_info['project_id'] = kwargs.get('project_id')
+            call_info['updated_since'] = kwargs.get('updated_since')
+
+        self.stubs.Set(cells_rpcapi.CellsAPI, 'sync_instances', sync_instances)
+
+        req = self._get_request("cells/sync_instances")
+        body = {}
+        self.controller.sync_instances(req, body=body)
+        self.assertEqual(call_info['project_id'], None)
+        self.assertEqual(call_info['updated_since'], None)
+
+        body = {'project_id': 'test-project'}
+        self.controller.sync_instances(req, body=body)
+        self.assertEqual(call_info['project_id'], 'test-project')
+        self.assertEqual(call_info['updated_since'], None)
+
+        expected = timeutils.utcnow().isoformat()
+        if not expected.endswith("+00:00"):
+            expected += "+00:00"
+
+        body = {'updated_since': expected}
+        self.controller.sync_instances(req, body=body)
+        self.assertEqual(call_info['project_id'], None)
+        self.assertEqual(call_info['updated_since'], expected)
+
+        body = {'updated_since': 'skjdfkjsdkf'}
+        self.assertRaises(exc.HTTPBadRequest,
+                self.controller.sync_instances, req, body=body)
+
+        body = {'foo': 'meow'}
+        self.assertRaises(exc.HTTPBadRequest,
+                self.controller.sync_instances, req, body=body)
+
 
 class TestCellsXMLSerializer(test.TestCase):
     def test_multiple_cells(self):

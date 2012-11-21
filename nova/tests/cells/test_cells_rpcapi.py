@@ -211,3 +211,14 @@ class CellsAPITestCase(test.TestCase):
                 self.fake_context)
         self._check_result(call_info, 'get_cell_info_for_siblings', {})
         self.assertEqual(result, 'fake_response')
+
+    def test_sync_instances(self):
+        call_info = self._stub_rpc_method('cast', None)
+        self.cells_rpcapi.sync_instances(self.fake_context,
+                project_id='fake_project', updated_since='fake_time',
+                deleted=True)
+
+        expected_args = {'project_id': 'fake_project',
+                         'updated_since': 'fake_time',
+                         'deleted': True}
+        self._check_result(call_info, 'sync_instances', expected_args)

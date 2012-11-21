@@ -255,3 +255,14 @@ class CellsManager(manager.Manager):
                 ctxt, 'bw_usage_update_at_top',
                 dict(bw_update_info=bw_update_info), 'up')
         message.process()
+
+    def sync_instances(self, ctxt, routing_path, project_id, updated_since,
+            deleted):
+        """Force a sync of all instances, potentially by project_id,
+        and potentially since a certain date/time."""
+        message = self.message_handler.create_broadcast_message(
+                ctxt, 'sync_instances',
+                dict(project_id=project_id,
+                     updated_since=updated_since,
+                     deleted=deleted), 'down', run_locally=True)
+        message.process()

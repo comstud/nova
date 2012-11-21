@@ -27,6 +27,7 @@ import sys
 from eventlet import queue
 
 from nova.cells import state as cells_state
+from nova.cells import utils as cells_utils
 from nova import compute
 from nova.db import base
 from nova import exception
@@ -36,6 +37,7 @@ from nova.openstack.common import importutils
 from nova.openstack.common import jsonutils
 from nova.openstack.common import log as logging
 from nova.openstack.common.rpc import common as rpc_common
+from nova.openstack.common import timeutils
 from nova.openstack.common import uuidutils
 from nova import utils
 
@@ -776,6 +778,31 @@ class _BroadcastMessageMethods(_BaseMessageMethods):
         if not self._at_the_top():
             return
         self.db.bw_usage_update(message.ctxt, **bw_update_info)
+
+    def _sync_instance(self, ctxt, instance):
+        if instance['deleted']:
+            message = self.message_handler.create_broadcast_message(
+                    ctxt, 'instance_destroy_at_top',
+                    dict(instance=instance), 'up')
+        else:
+            message = self.message_handler.create_broadcast_message(
+                    ctxt, 'instance_update_at_top',
+                    dict(instance=instance), 'up')
+        message.process()
+
+    def sync_instances(self, ctxt, message, project_id, updated_since,
+            deleted, **kwargs):
+        projid_str = project_id is None and "<all>" or project_id
+        since_str = updated_since is None and "<all>" or updated_since
+        LOG.info(_("Forcing a sync of instances, project_id="
+                   "%(projid_str)s, updated_since=%(since_str)s"), locals())
+        if updated_since is not None:
+            updated_since = timeutils.parse_isotime(updated_since)
+        instances = cells_utils.get_instances_to_sync(ctxt,
+                updated_since=updated_since, project_id=project_id,
+                deleted=deleted)
+        for instance in instances:
+            self._sync_instance(ctxt, instance)
 
 
 _CELL_MESSAGE_TYPE_TO_MESSAGE_CLS = {'targetted': _TargettedMessage,

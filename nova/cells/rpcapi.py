@@ -141,3 +141,13 @@ class CellsAPI(rpc_proxy.RpcProxy):
         if not CONF.cells.enable:
             return []
         return self.call(ctxt, self.make_msg('get_cell_info_for_siblings'))
+
+    def sync_instances(self, ctxt, project_id=None, updated_since=None,
+            deleted=False):
+        """Ask all cells to sync instance data."""
+        if not CONF.cells.enable:
+            return
+        return self.cast(ctxt, self.make_msg('sync_instances',
+                                             project_id=project_id,
+                                             updated_since=updated_since,
+                                             deleted=deleted))

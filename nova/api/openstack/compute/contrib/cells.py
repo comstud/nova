@@ -260,6 +260,25 @@ class Controller(object):
             raise exc.HTTPNotFound()
         return dict(cell=_scrub_cell(cell))
 
+    def sync_instances(self, req, body):
+        """Tell all cells to sync instance info."""
+        context = req.environ['nova.context']
+        authorize(context)
+        project_id = body.pop('project_id', None)
+        deleted = body.pop('deleted', False)
+        updated_since = body.pop('updated_since', None)
+        if body:
+            msg = _("Only 'updated_since' and 'project_id' are understood.")
+            raise exc.HTTPBadRequest(explanation=msg)
+        if updated_since:
+            try:
+                timeutils.parse_isotime(updated_since)
+            except ValueError:
+                msg = _('Invalid changes-since value')
+                raise exc.HTTPBadRequest(explanation=msg)
+        self.cells_rpcapi.sync_instances(context, project_id=project_id,
+                updated_since=updated_since, deleted=deleted)
+
 
 class Cells(extensions.ExtensionDescriptor):
     """Enables cells-related functionality such as adding child cells,
@@ -276,6 +295,7 @@ class Cells(extensions.ExtensionDescriptor):
         coll_actions = {
                 'detail': 'GET',
                 'info': 'GET',
+                'sync_instances': 'POST',
         }
 
         res = extensions.ResourceExtension('os-cells',
