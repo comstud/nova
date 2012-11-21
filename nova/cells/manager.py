@@ -16,19 +16,34 @@
 """
 Cells Service Manager
 """
+import datetime
+import time
 
 from nova.cells import messaging
 from nova.cells import state as cells_state
+from nova.cells import utils as cells_utils
 from nova import context
+from nova import exception
 from nova import manager
 from nova.openstack.common import cfg
 from nova.openstack.common import importutils
 from nova.openstack.common import log as logging
+from nova.openstack.common import timeutils
 
 cell_manager_opts = [
         cfg.StrOpt('driver',
                 default='nova.cells.rpc_driver.CellsRPCDriver',
                 help='Cells communication driver to use'),
+        cfg.IntOpt("instance_update_interval",
+                default=60,
+                help="Number of seconds between cell instance updates"),
+        cfg.IntOpt("instance_updated_at_threshold",
+                default=3600,
+                help="Number of seconds after an instance was updated "
+                        "or deleted to continue to update cells"),
+        cfg.IntOpt("instance_update_num_instances",
+                default=1,
+                help="Number of instances to update per periodic task run")
 ]
 
 
@@ -68,6 +83,8 @@ class CellsManager(manager.Manager):
         cells_driver_cls = importutils.import_class(
                 CONF.cells.driver)
         self.driver = cells_driver_cls()
+        self.last_instance_heal_time = 0
+        self.instances_to_heal = iter([])
 
     def _ask_children_for_capabilities(self, ctxt):
         """Tell child cells to send us capabilities.  We do this on
@@ -115,6 +132,72 @@ class CellsManager(manager.Manager):
         """
         self.message_handler.tell_parents_our_capabilities(ctxt)
         self.message_handler.tell_parents_our_capacities(ctxt)
+
+    @manager.periodic_task
+    def _heal_instances(self, context):
+        """Periodic task to send updates for a number of instances to
+        parent cells.
+        """
+
+        interval = CONF.cells.instance_update_interval
+        if not interval:
+            return
+        if not self.state_manager.get_parent_cells():
+            # No need to sync up if we have no parents.
+            return
+        curr_time = time.time()
+        if self.last_instance_heal_time + interval > curr_time:
+            return
+        self.last_instance_heal_time = curr_time
+
+        info = {'updated_list': False}
+
+        def _next_instance():
+            try:
+                instance = self.instances_to_heal.next()
+            except StopIteration:
+                if info['updated_list']:
+                    return
+                threshold = CONF.cells.instance_updated_at_threshold
+                updated_since = None
+                if threshold > 0:
+                    updated_since = timeutils.utcnow() - datetime.timedelta(
+                            seconds=threshold)
+                self.instances_to_heal = cells_utils.get_instances_to_sync(
+                        context, updated_since=updated_since, shuffle=True,
+                        uuids_only=True)
+                info['updated_list'] = True
+                try:
+                    instance = self.instances_to_heal.next()
+                except StopIteration:
+                    return
+            return instance
+
+        rd_context = context.elevated(read_deleted='yes')
+
+        for i in xrange(CONF.cells.instance_update_num_instances):
+            while True:
+                # Yield to other greenthreads
+                time.sleep(0)
+                instance_uuid = _next_instance()
+                if not instance_uuid:
+                    return
+                try:
+                    instance = self.db.instance_get_by_uuid(rd_context,
+                            instance_uuid)
+                except exception.InstanceNotFound:
+                    continue
+                self._sync_instance(context, instance)
+                break
+
+    def _sync_instance(self, context, instance):
+        """Broadcast an instance_update or instance_destroy message up to
+        parent cells.
+        """
+        if instance['deleted']:
+            self.instance_destroy_at_top(context, instance)
+        else:
+            self.instance_update_at_top(context, instance)
 
     def schedule_run_instance(self, ctxt, **host_sched_kwargs):
         """Pick a cell (possibly ourselves) to build new instance(s)
