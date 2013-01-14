@@ -6105,8 +6105,8 @@ class ComputeHostAPITestCase(BaseTestCase):
     def _pretend_fake_host_exists(self, ctxt):
         """Sets it so that the host API always thinks that 'fake_host'
         exists"""
-        self.mox.StubOutWithMock(self.host_api, 'does_host_exist')
-        self.host_api.does_host_exist(ctxt, 'fake_host').AndReturn(True)
+        self.mox.StubOutWithMock(self.host_api.rpcapi, '_assert_host_exists')
+        self.host_api.rpcapi._assert_host_exists(ctxt, 'fake_host')
         self.mox.ReplayAll()
 
     def test_set_host_enabled(self):
