@@ -2175,16 +2175,12 @@ class HostAPI(base.Base):
 
     def set_host_enabled(self, context, host_name, enabled):
         """Sets the specified host's ability to accept new instances."""
-        # NOTE(comstud): No instance_uuid argument to this compute manager
-        # call
         self._assert_host_exists(context, host_name)
         return self.rpcapi.set_host_enabled(context, enabled=enabled,
                 host=host_name)
 
     def get_host_uptime(self, context, host_name):
         """Returns the result of calling "uptime" on the target host."""
-        # NOTE(comstud): No instance_uuid argument to this compute manager
-        # call
         self._assert_host_exists(context, host_name)
         return self.rpcapi.get_host_uptime(context, host=host_name)
 

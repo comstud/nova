@@ -20,9 +20,14 @@ import datetime
 from nova.cells import messaging
 from nova.cells import utils as cells_utils
 from nova import context
+from nova.openstack.common import cfg
+from nova.openstack.common import rpc
 from nova.openstack.common import timeutils
 from nova import test
 from nova.tests.cells import fakes
+
+CONF = cfg.CONF
+CONF.import_opt('compute_topic', 'nova.compute.rpcapi')
 
 
 class CellsManagerClassTestCase(test.TestCase):
@@ -45,6 +50,14 @@ class CellsManagerClassTestCase(test.TestCase):
             responses.append(messaging.Response('cell%s' % x, x, False))
             expected_responses.append(('cell%s' % x, x))
         return expected_responses, responses
+
+    def _get_fake_response(self, raw_response=None, exc=False):
+        if exc:
+            return messaging.Response('fake', test.TestingException(),
+                                      True)
+        if raw_response is None:
+            raw_response = 'fake-response'
+        return messaging.Response('fake', raw_response, False)
 
     def test_get_cell_info_for_neighbors(self):
         self.mox.StubOutWithMock(self.cells_manager.state_manager,
@@ -109,17 +122,13 @@ class CellsManagerClassTestCase(test.TestCase):
         cell_name = 'fake-cell-name'
         method_info = 'fake-method-info'
 
-        fake_response = messaging.Response('fake', 'fake', False)
-
         self.mox.StubOutWithMock(self.msg_runner,
                                  'run_compute_api_method')
-        self.mox.StubOutWithMock(fake_response,
-                                 'value_or_raise')
+        fake_response = self._get_fake_response()
         self.msg_runner.run_compute_api_method(self.ctxt,
                                                cell_name,
                                                method_info,
                                                True).AndReturn(fake_response)
-        fake_response.value_or_raise().AndReturn('fake-response')
         self.mox.ReplayAll()
         response = self.cells_manager.run_compute_api_method(
                 self.ctxt, cell_name=cell_name, method_info=method_info,
@@ -237,3 +246,44 @@ class CellsManagerClassTestCase(test.TestCase):
                                           project_id='fake-project',
                                           updated_since='fake-time',
                                           deleted='fake-deleted')
+
+    def test_service_get_all(self):
+        expected_response, raw_responses = self._get_fake_responses()
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'service_get_all')
+        self.msg_runner.service_get_all(self.ctxt, 'fake-disabled',
+                                        'fake-filters').AndReturn(
+                raw_responses)
+        self.mox.ReplayAll()
+        response = self.cells_manager.service_get_all(self.ctxt,
+                include_disabled='fake-disabled',
+                filters='fake-filters')
+        self.assertEqual(expected_response, response)
+
+    def test_service_get_by_compute_host(self):
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'service_get_by_compute_host')
+        fake_response = self._get_fake_response()
+        cell_and_host = cells_utils.cell_with_item('fake-cell', 'fake-host')
+        self.msg_runner.service_get_by_compute_host(self.ctxt,
+                'fake-cell', 'fake-host').AndReturn(fake_response)
+        self.mox.ReplayAll()
+        response = self.cells_manager.service_get_by_compute_host(self.ctxt,
+                host_name=cell_and_host)
+        self.assertEqual('fake-response', response)
+
+    def test_proxy_rpc_to_manager(self):
+        self.mox.StubOutWithMock(self.msg_runner,
+                                 'proxy_rpc_to_manager')
+        fake_response = self._get_fake_response()
+        cell_and_host = cells_utils.cell_with_item('fake-cell', 'fake-host')
+        topic = rpc.queue_get_for(self.ctxt, CONF.compute_topic,
+                                  cell_and_host)
+        self.msg_runner.proxy_rpc_to_manager(self.ctxt, 'fake-cell',
+                'fake-host', topic, 'fake-rpc-msg',
+                True, -1).AndReturn(fake_response)
+        self.mox.ReplayAll()
+        response = self.cells_manager.proxy_rpc_to_manager(self.ctxt,
+                topic=topic, rpc_message='fake-rpc-msg', call=True,
+                timeout=-1)
+        self.assertEqual('fake-response', response)
