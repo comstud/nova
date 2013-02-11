@@ -63,7 +63,8 @@ CONF.register_opts(tpool_opts, 'database')
 CONF.import_opt('backend', 'nova.openstack.common.db.options',
                 group='database')
 
-_BACKEND_MAPPING = {'sqlalchemy': 'nova.db.sqlalchemy.api'}
+_BACKEND_MAPPING = {'sqlalchemy': 'nova.db.sqlalchemy.api',
+                    'mysqldb': 'nova.db.mysqldb.api'}
 
 
 class NovaDBAPI(object):
