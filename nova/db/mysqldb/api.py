@@ -101,3 +101,19 @@ class API(object):
             return models.Models.BandwidthUsageCache.update(conn,
                     ctxt, uuid, mac, start_period, bw_in, bw_out,
                     last_ctr_in, last_ctr_out, last_refreshed)
+
+    @dbapi_method()
+    def instance_get_by_uuid(self, ctxt, uuid, columns_to_join=None,
+                             use_slave=False):
+        with self.pool.get() as conn:
+            instance = models.Models.Instance.get_by_uuid(
+                    conn, ctxt, uuid,
+                    columns_to_join=columns_to_join)
+        return instance.to_dict()
+
+    @dbapi_method()
+    def instance_get_all(self, ctxt, columns_to_join=None):
+        with self.pool.get() as conn:
+            instances = models.Models.Instance.get_all(conn, ctxt,
+                                                       columns_to_join)
+        return [i.to_dict() for i in instances]
