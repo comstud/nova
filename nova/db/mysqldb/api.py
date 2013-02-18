@@ -139,6 +139,22 @@ class API(object):
         return orig_instance.to_dict()
 
     @dbapi_method()
+    def instance_update(self, ctxt, instance_uuid, values):
+        with self.pool.get() as conn:
+            instance = models.Models.Instance.update(conn, ctxt,
+                                                     instance_uuid, values)
+        return instance.to_dict()
+
+    @dbapi_method()
+    def instance_update_and_get_original(self, ctxt, instance_uuid,
+                                         values, columns_to_join=None):
+        method = models.Models.Instance.update_and_get_original
+        with self.pool.get() as conn:
+            orig_instance, instance = method(conn, ctxt, instance_uuid,
+                                             values)
+        return orig_instance.to_dict(), instance.to_dict()
+
+    @dbapi_method()
     def instance_info_cache_get(self, ctxt, instance_uuid):
         method = models.Models.InstanceInfoCache.get
         with self.pool.get() as conn:
@@ -152,7 +168,9 @@ class API(object):
         method = models.Models.InstanceInfoCache.update
         with self.pool.get() as conn:
             info_cache = method(conn, ctxt, instance_uuid, values)
-        return info_cache.to_dict()
+        if info_cache is not None:
+            info_cache = info_cache.to_dict()
+        return info_cache
 
     @dbapi_method()
     def instance_info_cache_delete(self, ctxt, instance_uuid):
