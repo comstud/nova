@@ -46,14 +46,11 @@ these objects be simple dictionaries.
 from nova.cells import rpcapi as cells_rpcapi
 from nova import exception
 from nova.openstack.common import cfg
+from nova.openstack.common.db import api as db_api
 from nova.openstack.common import log as logging
-from nova import utils
 
 
 db_opts = [
-    cfg.StrOpt('db_backend',
-               default='sqlalchemy',
-               help='The backend to use for db'),
     cfg.BoolOpt('enable_new_services',
                 default=True,
                 help='Services to be added to the available pool on create'),
@@ -68,8 +65,10 @@ db_opts = [
 CONF = cfg.CONF
 CONF.register_opts(db_opts)
 
-IMPL = utils.LazyPluggable('db_backend',
-                           sqlalchemy='nova.db.sqlalchemy.api')
+_KNOWN_BACKENDS = {'sqlalchemy': 'nova.db.sqlalchemy.api'}
+
+
+IMPL = db_api.DBAPI(known_backends=_KNOWN_BACKENDS)
 LOG = logging.getLogger(__name__)
 
 
