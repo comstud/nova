@@ -21,7 +21,7 @@ import eventlet
 
 # Do not monkey_patch in unittest
 if __name__ == '__main__':
-    eventlet.monkey_patch()
+    eventlet.monkey_patch(thread=False)
 
 import os
 import sys

@@ -20,7 +20,7 @@
 """Daemon for nova objectstore. Supports S3 API."""
 
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch(thread=False)
 
 import os
 import sys

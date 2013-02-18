@@ -25,9 +25,9 @@ import os
 if os.name == 'nt':
     # eventlet monkey patching causes subprocess.Popen to fail on Windows
     # when using pipes due to missing non blocking I/O support
-    eventlet.monkey_patch(os=False)
+    eventlet.monkey_patch(os=False, thread=False)
 else:
-    eventlet.monkey_patch()
+    eventlet.monkey_patch(thread=False)
 
 import os
 import sys

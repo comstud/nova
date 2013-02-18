@@ -20,7 +20,7 @@
 """Starter script for Nova Network."""
 
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch(thread=False)
 
 import os
 import sys

@@ -11,7 +11,7 @@ Options:
                    images.
 """
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch(thread=False)
 
 import os
 import sys

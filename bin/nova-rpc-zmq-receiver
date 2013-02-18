@@ -16,7 +16,7 @@
 #    under the License.
 
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch(thread=False)
 
 import contextlib
 import os

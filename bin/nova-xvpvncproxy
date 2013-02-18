@@ -19,7 +19,7 @@
 """XVP VNC Console Proxy Server."""
 
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch(thread=False)
 
 import os
 import sys

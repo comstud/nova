@@ -64,7 +64,7 @@ CONF.set_override('use_stderr', False)
 logging.setup('nova')
 LOG = logging.getLogger(__name__)
 
-eventlet.monkey_patch(os=False)
+eventlet.monkey_patch(os=False, thread=False)
 
 _DB_CACHE = None
 

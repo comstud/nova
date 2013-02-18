@@ -20,7 +20,7 @@
 """Starter script for Nova Scheduler."""
 
 import eventlet
-eventlet.monkey_patch()
+eventlet.monkey_patch(thread=False)
 
 import gettext
 import os
