@@ -175,7 +175,7 @@ class Mixin(object):
         return cls._instance_get_by_uuid(conn, ctxt, instance_uuid)
 
     @classmethod
-    def get_all(cls, conn, ctxt, columns_to_join):
+    def get_all(cls, conn, ctxt, columns_to_join=None):
         query = cls._build_instance_get(ctxt,
                                         columns_to_join=columns_to_join)
         return query.fetchall(conn)
