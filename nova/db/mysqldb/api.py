@@ -130,6 +130,14 @@ class API(object):
         return [i.to_dict() for i in instances]
 
     @dbapi_method()
+    def instance_get_all_by_filters(self, ctxt, filters, sort_key, sort_dir,
+                                    limit=None, marker=None):
+        # FIXME: This doesn't actually work YET!
+        with self.pool.get() as conn:
+            instances = models.Models.Instance.get_all(conn, ctxt)
+        return [i.to_dict() for i in instances]
+
+    @dbapi_method()
     def instance_destroy(self, ctxt, instance_uuid, constraint=None):
         with self.pool.get() as conn:
             orig_instance = models.Models.Instance.destroy(conn, ctxt,
