@@ -42,7 +42,7 @@ class Mixin(object):
         return query.insert(conn)
 
     @classmethod
-    def soft_delete(cls, conn, instance_uuid, key):
+    def soft_delete(cls, conn, ctxt, instance_uuid, key):
         return super(Mixin, cls).soft_delete(conn, _WHERE_STR,
                                              key=key,
                                              instance_uuid=instance_uuid)

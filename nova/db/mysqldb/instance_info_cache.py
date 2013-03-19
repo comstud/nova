@@ -24,16 +24,16 @@ _WHERE_STR = '`instance_uuid`=%(instance_uuid)s'
 
 class Mixin(object):
     @classmethod
-    def get(cls, conn, context, instance_uuid):
+    def get(cls, conn, ctxt, instance_uuid):
         query = sql.SelectQuery(cls)
         query = query.where(_WHERE_STR, instance_uuid=instance_uuid)
         return query.first(conn)
 
     @classmethod
-    def update(cls, conn, context, instance_uuid, values):
-        info_cache = cls.get(conn, context, instance_uuid)
+    def update(cls, conn, ctxt, instance_uuid, values):
+        info_cache = cls.get(conn, ctxt, instance_uuid)
         if not info_cache:
-            return cls.create(conn, context, instance_uuid, values)
+            return cls.create(conn, ctxt, instance_uuid, values)
         if info_cache['deleted']:
             raise exception.InstanceInfoCacheNotFound(
                     instance_uuid=instance_uuid)
@@ -43,19 +43,19 @@ class Mixin(object):
         query = query.where(_WHERE_STR, instance_uuid=instance_uuid)
         rows = query.update(conn)
         if rows:
-            return cls.get(conn, context, instance_uuid)
+            return cls.get(conn, ctxt, instance_uuid)
         return info_cache
 
     @classmethod
-    def create(cls, conn, context, instance_uuid, values):
+    def create(cls, conn, ctxt, instance_uuid, values):
         values['instance_uuid'] = instance_uuid
         if 'created_at' not in values:
             values['created_at'] = timeutils.utcnow()
         query = sql.InsertQuery(cls, values=values)
         query.insert(conn)
-        return cls.get(conn, context, instance_uuid)
+        return cls.get(conn, ctxt, instance_uuid)
 
     @classmethod
-    def soft_delete(cls, conn, instance_uuid):
+    def soft_delete(cls, conn, ctxt, instance_uuid):
         return super(Mixin, cls).soft_delete(conn,
                 _WHERE_STR, instance_uuid=instance_uuid)

@@ -18,7 +18,7 @@
 
 class Mixin(object):
     @classmethod
-    def soft_delete(cls, conn, instance_uuid, security_group_id=None):
+    def soft_delete(cls, conn, ctxt, instance_uuid, security_group_id=None):
         where_str = '`instance_uuid`=%(instance_uuid)s'
         where_kwargs = dict(instance_uuid=instance_uuid)
         if security_group_id is not None:

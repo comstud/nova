@@ -68,7 +68,7 @@ class Mixin(object):
                 if keyvalue['value'] != value:
                     model.update(conn, instance_uuid, key, value)
             elif key not in new_metadata:
-                model.soft_delete(conn, instance_uuid, key)
+                model.soft_delete(conn, ctxt, instance_uuid, key)
         for key, value in new_metadata.iteritems():
             model.insert(conn, instance_uuid, key, value)
 
@@ -189,13 +189,13 @@ class Mixin(object):
             raise exception.InvalidUUID(instance_uuid)
         if constraint:
             constraint.check(instance_ref)
-        result = cls.soft_delete(conn, instance_uuid)
+        result = cls.soft_delete(conn, ctxt, instance_uuid)
         if result == 0:
             return
         sg_assoc = cls.get_model('SecurityGroupInstanceAssociation')
-        sg_assoc.soft_delete(conn, instance_uuid)
+        sg_assoc.soft_delete(conn, ctxt, instance_uuid)
         ic = cls.get_model('InstanceInfoCache')
-        ic.soft_delete(conn, instance_uuid)
+        ic.soft_delete(conn, ctxt, instance_uuid)
         return instance_ref
 
     @classmethod
@@ -210,6 +210,6 @@ class Mixin(object):
                                     copy_old_instance=True)
 
     @classmethod
-    def soft_delete(cls, conn, instance_uuid):
+    def soft_delete(cls, conn, ctxt, instance_uuid):
         return super(Mixin, cls).soft_delete(conn,
                 '`uuid` = %(instance_uuid)s', instance_uuid=instance_uuid)
